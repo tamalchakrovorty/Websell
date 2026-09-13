@@ -12,7 +12,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('railway') || process.env.DATABASE_URL?.includes('render')
+    ? { rejectUnauthorized: false } : false
+});
 if (process.env.SENDGRID_API_KEY) sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // ── Auth Middleware ──
@@ -27,9 +31,11 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
+// ── Health check ──
+app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
 // ── Public Routes ──
 
-// POST /api/orders — create order (public)
 app.post('/api/orders', async (req, res) => {
   const { packageName, businessName, businessCategory, contentNotes, preferredDomain, referenceDemoId, contactName, contactEmail, contactWhatsapp, contactMethod, referralCode, maintenance, total } = req.body;
   const trackingLink = randomBytes(4).toString('hex');
@@ -43,7 +49,8 @@ app.post('/api/orders', async (req, res) => {
     const order = rows[0];
     if (process.env.SENDGRID_API_KEY) {
       try {
-        await sgMail.send({ to: contactEmail, from: process.env.CLIENT_FROM_EMAIL || 'hello@nexaweb.com', subject: 'Order Confirmed — NexaWeb', text: `Hi ${contactName}, thanks for your order! Your tracking link: ${req.get('origin') || 'https://nexaweb.com'}/order/track/${trackingLink}` });
+        const clientUrl = process.env.CLIENT_URL || 'https://nexaweb.vercel.app';
+        await sgMail.send({ to: contactEmail, from: process.env.CLIENT_FROM_EMAIL || 'hello@nexaweb.com', subject: 'Order Confirmed — NexaWeb', text: `Hi ${contactName}, thanks for your order! Track it here: ${clientUrl}/order/track/${trackingLink}` });
         await sgMail.send({ to: process.env.ADMIN_EMAIL || 'admin@nexaweb.com', from: process.env.CLIENT_FROM_EMAIL || 'hello@nexaweb.com', subject: `New Order: ${packageName} — ${businessName}`, text: `Order #${trackingLink}: ${businessName} (${packageName}). Contact: ${contactName} <${contactEmail}>` });
       } catch (e) { console.log('Email error:', e.message); }
     }
@@ -51,7 +58,6 @@ app.post('/api/orders', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/orders/track/:link — public order tracking
 app.get('/api/orders/track/:trackingLink', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM orders WHERE tracking_link = $1', [req.params.trackingLink]);
@@ -60,7 +66,6 @@ app.get('/api/orders/track/:trackingLink', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/demos — public demo listing
 app.get('/api/demos', async (_req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM demos ORDER BY created_at DESC');
@@ -68,7 +73,6 @@ app.get('/api/demos', async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/case-studies — public case study listing
 app.get('/api/case-studies', async (_req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM case_studies ORDER BY created_at DESC');
@@ -76,9 +80,7 @@ app.get('/api/case-studies', async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Admin Auth Routes ──
-
-// POST /api/admin/login
+// ── Admin Auth ──
 app.post('/api/admin/login', async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -92,8 +94,6 @@ app.post('/api/admin/login', async (req, res) => {
 });
 
 // ── Admin Orders ──
-
-// GET /api/admin/orders — list all orders
 app.get('/api/admin/orders', authMiddleware, async (req, res) => {
   const { status } = req.query;
   try {
@@ -104,7 +104,6 @@ app.get('/api/admin/orders', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// PATCH /api/admin/orders/:id/status — update order status/notes
 app.patch('/api/admin/orders/:id/status', authMiddleware, async (req, res) => {
   const { status, admin_notes } = req.body;
   try {
@@ -117,7 +116,6 @@ app.patch('/api/admin/orders/:id/status', authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Admin Stats ──
 app.get('/api/admin/stats', authMiddleware, async (_req, res) => {
   try {
     const now = new Date();
@@ -177,7 +175,7 @@ app.delete('/api/admin/case-studies/:id', authMiddleware, async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Admin Reminder Trigger ──
+// ── Admin Reminder ──
 app.post('/api/admin/reminder', authMiddleware, async (_req, res) => {
   try {
     const date = new Date(); date.setDate(date.getDate() + 30);
@@ -198,18 +196,47 @@ app.post('/api/admin/reminder', authMiddleware, async (_req, res) => {
 
 // ── Init DB + Start ──
 async function init() {
-  const client = await pool.connect();
   try {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS admin_users (id SERIAL PRIMARY KEY, email TEXT UNIQUE, password TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
-      CREATE TABLE IF NOT EXISTS orders (id SERIAL PRIMARY KEY, tracking_link VARCHAR(8) UNIQUE, package_name TEXT, business_name TEXT, business_category TEXT, content_notes TEXT, preferred_domain TEXT, reference_demo_id INT, contact_name TEXT, contact_email TEXT, contact_whatsapp TEXT, contact_method TEXT, referral_code TEXT, status VARCHAR(20) DEFAULT 'received', admin_notes TEXT, total REAL, maintenance BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW(), expires_at DATE);
-      CREATE TABLE IF NOT EXISTS demos (id SERIAL PRIMARY KEY, title TEXT, category VARCHAR(50), image_url TEXT, demo_url TEXT, description TEXT, budget_tier VARCHAR(20), created_at TIMESTAMPTZ DEFAULT NOW());
-      CREATE TABLE IF NOT EXISTS case_studies (id SERIAL PRIMARY KEY, title TEXT, client_name TEXT, client_background TEXT, challenge TEXT, solution TEXT, outcome TEXT, metrics TEXT, live_link TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
-      INSERT INTO admin_users (email, password) SELECT 'admin@nexaweb.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy' WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE email='admin@nexaweb.com');
-    `);
-    console.log('DB tables ready');
-  } finally { client.release(); }
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    const client = await pool.connect();
+    try {
+      await client.query(`CREATE TABLE IF NOT EXISTS admin_users (
+        id SERIAL PRIMARY KEY, email TEXT UNIQUE, password TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+      )`);
+      await client.query(`CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY, tracking_link VARCHAR(8) UNIQUE, package_name TEXT, business_name TEXT,
+        business_category TEXT, content_notes TEXT, preferred_domain TEXT, reference_demo_id INT,
+        contact_name TEXT, contact_email TEXT, contact_whatsapp TEXT, contact_method TEXT,
+        referral_code TEXT, status VARCHAR(20) DEFAULT 'received', admin_notes TEXT, total REAL,
+        maintenance BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW(), expires_at DATE
+      )`);
+      await client.query(`CREATE TABLE IF NOT EXISTS demos (
+        id SERIAL PRIMARY KEY, title TEXT, category VARCHAR(50), image_url TEXT, demo_url TEXT,
+        description TEXT, budget_tier VARCHAR(20), created_at TIMESTAMPTZ DEFAULT NOW()
+      )`);
+      await client.query(`CREATE TABLE IF NOT EXISTS case_studies (
+        id SERIAL PRIMARY KEY, title TEXT, client_name TEXT, client_background TEXT, challenge TEXT,
+        solution TEXT, outcome TEXT, metrics TEXT, live_link TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+      )`);
+      const hash = await bcrypt.hash('admin123', 10);
+      await client.query(
+        'INSERT INTO admin_users (email, password) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING',
+        ['admin@nexaweb.com', hash]
+      );
+      console.log('✅ Database tables ready');
+    } finally { client.release(); }
+  } catch (e) {
+    console.error('⚠️  Database init failed:', e.message);
+    console.error('Server will start but some features may not work without a database.');
+  }
 }
-init();
+
+const PORT = process.env.PORT || 3001;
+
+init().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
+}).catch((e) => {
+  console.error('Failed to start server:', e);
+  process.exit(1);
+});
