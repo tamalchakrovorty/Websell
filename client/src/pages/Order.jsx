@@ -62,7 +62,14 @@ export default function Order() {
     try {
       const result = await submitOrder(form);
       setStatus('success'); setTrackingLink(result.tracking_link);
-    } catch (e) { setStatus('error'); setError(e.message); }
+    } catch (e) {
+      setStatus('error');
+      if (e.message.includes('not connected') || e.message.includes('503')) {
+        setError('Our order system is temporarily unavailable. Please try again in a few minutes or contact us on WhatsApp.');
+      } else {
+        setError(e.message || 'Something went wrong. Please try again.');
+      }
+    }
   };
 
   if (status === 'success') {

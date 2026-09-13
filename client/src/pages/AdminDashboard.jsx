@@ -46,7 +46,7 @@ const AdminDashboard = () => {
       localStorage.setItem('adminToken', data.token);
       setToken(data.token);
     } catch (e) {
-      setLoginError('Invalid credentials');
+      setLoginError(e.message || 'Invalid credentials. Please check your email and password.');
     }
   };
 
