@@ -1,14 +1,13 @@
 {
-  "buildCommand": "cd client && npm install && npm run build",
-  "outputDirectory": "client/dist",
-  "installCommand": "cd api && npm install",
+  "buildCommand": "cd api && npm install && cd ../client && npm install && npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "echo 'deps installed in buildCommand'",
   "functions": {
-    "api/index.js": {
+    "api/index.mjs": {
       "maxDuration": 30
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" },
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
   ]
 }
