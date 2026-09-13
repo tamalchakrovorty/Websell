@@ -71,9 +71,9 @@ const AdminDashboard = () => {
             </div>
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="text-sm text-slate-600 dark:text-slate-400 font-medium">Username</label>
+                <label className="text-sm text-slate-600 dark:text-slate-400 font-medium">Email</label>
                 <input value={loginForm.username} onChange={e => setLoginForm(p => ({ ...p, username: e.target.value }))}
-                  className="mt-1 w-full bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 placeholder-slate-400 dark:placeholder-slate-500" placeholder="admin" />
+                  className="mt-1 w-full bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 placeholder-slate-400 dark:placeholder-slate-500" placeholder="admin@nexaweb.com" />
               </div>
               <div>
                 <label className="text-sm text-slate-600 dark:text-slate-400 font-medium">Password</label>
@@ -82,7 +82,7 @@ const AdminDashboard = () => {
               </div>
               {loginError && <p className="text-red-400 text-sm">{loginError}</p>}
               <button type="submit" className="btn-primary w-full text-center">Sign In</button>
-              <p className="text-slate-600 text-xs text-center">Default: admin / password</p>
+              <p className="text-slate-600 text-xs text-center">Default: admin@nexaweb.com / admin123</p>
             </form>
           </div>
         </FadeIn>

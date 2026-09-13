@@ -71,9 +71,10 @@ app.get('/api/case-studies', async (_req, res) => {
 });
 
 app.post('/api/admin/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { username, email, password } = req.body;
+  const loginEmail = email || username; // Accept both 'email' and 'username' (username is treated as email)
   try {
-    const { rows } = await pool.query('SELECT * FROM admin_users WHERE email = $1', [email]);
+    const { rows } = await pool.query('SELECT * FROM admin_users WHERE email = $1', [loginEmail]);
     if (!rows.length) return res.status(401).json({ error: 'Invalid credentials' });
     const valid = await bcrypt.compare(password, rows[0].password);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
@@ -199,10 +200,12 @@ async function initDB() {
       id SERIAL PRIMARY KEY, title TEXT, client_name TEXT, challenge TEXT,
       solution TEXT, outcome TEXT, metrics TEXT, live_link TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
-    const hash = await bcrypt.hash('admin123', 10);
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@nexaweb.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const hash = await bcrypt.hash(adminPassword, 10);
     await pool.query(
       'INSERT INTO admin_users (email, password) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING',
-      ['admin@nexaweb.com', hash]
+      [adminEmail, hash]
     );
   } catch (e) { console.error('DB init:', e.message); }
 }
