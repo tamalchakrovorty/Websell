@@ -8,14 +8,15 @@ const statusColors = { received: 'cyan', 'in design': 'violet', review: 'amber',
 const statusIcons = { received: '📋', 'in design': '🎨', review: '👁️', live: '🚀' };
 
 export default function OrderTracking() {
-  const { id } = useParams();
+  const { trackingLink } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    getOrder(id).then(setOrder).catch(e => setError(e.message)).finally(() => setLoading(false));
-  }, [id]);
+    if (!trackingLink) { setError('No tracking link provided.'); setLoading(false); return; }
+    getOrder(trackingLink).then(setOrder).catch(e => setError(e.message)).finally(() => setLoading(false));
+  }, [trackingLink]);
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -41,7 +42,7 @@ export default function OrderTracking() {
         <FadeIn>
           <div className="text-center mb-10">
             <h1 className="text-3xl font-extrabold text-slate-800 dark:text-white mb-2">Order Tracking</h1>
-            <p className="text-slate-500">Order #{id?.slice(0, 8)}</p>
+            <p className="text-slate-500">Order #{trackingLink}</p>
           </div>
         </FadeIn>
 
